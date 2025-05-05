@@ -18,6 +18,7 @@ void* MemoryPool::allocate() {
     // Pop a block from the list of available
     int block_num = free_blocks.front();
     free_blocks.pop();
+    used_blocks.insert(block_num);
 
     // Get address of that block
     uint32_t offset = block_size * block_num;
@@ -40,6 +41,9 @@ int MemoryPool::deallocate(void* block) {
 
     // Ensure address is within the bounds of the pool
     if (block_num < 0 || block_num > total_blocks) return -1;
+
+    // Ensure block was previously allocated
+    if (used_blocks.erase(block_num) == 0) return -1;
 
     // Return the block to list of usable blocks
     free_blocks.push(block_num);
