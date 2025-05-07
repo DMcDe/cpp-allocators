@@ -11,7 +11,7 @@
 #endif
 
 int main() {
-    MemoryPool pool(NUM_BLOCKS, BLOCK_SIZE);
+    LLMemoryPool pool(NUM_BLOCKS, BLOCK_SIZE);
 
     std::cout << "Allocating a block of memory.\n";
     void* block = pool.allocate();

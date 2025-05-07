@@ -1,6 +1,14 @@
 #include <queue>
 #include <unordered_set>
 
+#ifndef DEFAULT_BLOCK_SIZE
+#define DEFAULT_BLOCK_SIZE 256
+#endif
+
+#ifndef DEFAULT_NUM_BLOCKS
+#define DEFAULT_NUM_BLOCKS 256
+#endif
+
 /**
  * Implementation of a memory pool-based allocator
  * 
@@ -94,4 +102,92 @@ public:
      * @return 0 on success, -1 on failure
      */
     int deallocate(void* block);
+};
+
+template<typename T>
+class MemoryPoolAllocator {
+private:
+    T* pool;
+    T* first_free;
+    int total_blocks;
+    int block_size;
+    int free_blocks;
+
+public:
+    using value_type = T;
+
+    MemoryPoolAllocator() : total_blocks(DEFAULT_NUM_BLOCKS), block_size (DEFAULT_BLOCK_SIZE) {
+        // Allocate pool memory
+        pool = reinterpret_cast<T*>(::operator new(total_blocks * block_size));
+
+        // Start of the pool is free on initialization
+        first_free = pool;
+
+        // Insert address of next free block at start of each block
+        for (int i = 0; i < total_blocks - 1; i++) {
+            *(T**)(reinterpret_cast<char*>(first_free) + i * block_size) = reinterpret_cast<char*>(first_free) + (i + 1) * block_size;
+        }
+
+        // Final block's next ptr is nullptr
+        *(T**)(reinterpret_cast<char*>(first_free) + (total_blocks - 1) * block_size) = nullptr;
+    }
+
+    MemoryPoolAllocator(size_t blocks, size_T size) : total_blocks(blocks), block_size (size) {
+        // Allocate pool memory
+        pool = reinterpret_cast<T*>(::operator new(total_blocks * block_size));
+
+        // Start of the pool is free on initialization
+        first_free = pool;
+
+        // Insert address of next free block at start of each block
+        for (int i = 0; i < total_blocks - 1; i++) {
+            *(T**)(reinterpret_cast<char*>(first_free) + i * block_size) = reinterpret_cast<char*>(first_free) + (i + 1) * block_size;
+        }
+
+        // Final block's next ptr is nullptr
+        *(T**)(reinterpret_cast<char*>(first_free) + (total_blocks - 1) * block_size) = nullptr;
+    }
+
+    template<typename U>
+    constexpr MemoryPoolAllocator<T>::MemoryPoolAllocator(const MemoryPoolAllocator<U>&) noexcept {}
+
+    T* allocate(size_t n) {
+        // Not allowed to allocate more than a single block
+        if (n > block_size) throw std::bad_array_new_length();
+
+        // Pool is out of space
+        if (free_blocks == 0) throw std::bad_array_new_length();
+
+        // Get allocation
+        T* block = first_free;
+
+        // Update free list to point to next block
+        first_free = *((T**)first_free);
+
+        // Decrement free blocks counter
+        free_blocks--;
+
+        // Return address
+        return block;
+    }
+
+    void deallocate(T* p, size_t n) noexcept {
+        // Since being called by STL, can exclude p error checking
+
+        // Set the block to point to what was previously start of free list
+        *((T**)block) = first_free;
+
+        // Set free list to start at the block
+        first_free = block;
+
+        // Increment free blocks count
+        free_blocks++;
+    }
+
+    friend bool operator==(const MemoryPoolAllocator &lhs, const MemoryPoolAllocator &rhs) {return lhs.pool == rhs.pool};
+    friend bool operator!=(const MemoryPoolAllocator &lhs, const MemoryPoolAllocator &rhs) {return lhs.pool != rhs.pool};
+
+    ~MemoryPoolAllocator() {
+        ::operator delete(pool);
+    }
 };
