@@ -116,7 +116,7 @@ private:
 public:
     using value_type = T;
 
-    MemoryPoolAllocator() : total_blocks(DEFAULT_NUM_BLOCKS), block_size (DEFAULT_BLOCK_SIZE) {
+    MemoryPoolAllocator() : total_blocks(DEFAULT_NUM_BLOCKS), block_size (DEFAULT_BLOCK_SIZE), free_blocks(DEFAULT_NUM_BLOCKS) {
         // Allocate pool memory
         pool = reinterpret_cast<T*>(::operator new(total_blocks * block_size));
 
@@ -125,14 +125,14 @@ public:
 
         // Insert address of next free block at start of each block
         for (int i = 0; i < total_blocks - 1; i++) {
-            *(T**)(reinterpret_cast<char*>(first_free) + i * block_size) = reinterpret_cast<char*>(first_free) + (i + 1) * block_size;
+            *(T**)(first_free + i * block_size/sizeof(T)) = first_free + (i + 1) * block_size/sizeof(T);
         }
 
         // Final block's next ptr is nullptr
-        *(T**)(reinterpret_cast<char*>(first_free) + (total_blocks - 1) * block_size) = nullptr;
+        *(T**)(first_free + (total_blocks - 1) * block_size/sizeof(T)) = nullptr;
     }
 
-    MemoryPoolAllocator(size_t blocks, size_t size) : total_blocks(blocks), block_size (size) {
+    MemoryPoolAllocator(size_t blocks, size_t size) : total_blocks(blocks), block_size (size), free_blocks(blocks) {
         // Allocate pool memory
         pool = reinterpret_cast<T*>(::operator new(total_blocks * block_size));
 
@@ -141,15 +141,29 @@ public:
 
         // Insert address of next free block at start of each block
         for (int i = 0; i < total_blocks - 1; i++) {
-            *(T**)(reinterpret_cast<char*>(first_free) + i * block_size) = reinterpret_cast<char*>(first_free) + (i + 1) * block_size;
+            *(T**)(first_free + i * block_size/sizeof(T)) = first_free + (i + 1) * block_size/sizeof(T);
         }
 
         // Final block's next ptr is nullptr
-        *(T**)(reinterpret_cast<char*>(first_free) + (total_blocks - 1) * block_size) = nullptr;
+        *(T**)(first_free + (total_blocks - 1) * block_size/sizeof(T)) = nullptr;
     }
 
     template<typename U>
-    constexpr MemoryPoolAllocator(const MemoryPoolAllocator<U>&) noexcept {}
+    constexpr MemoryPoolAllocator(const MemoryPoolAllocator<U> &rhs) noexcept 
+    : total_blocks(rhs.total_blocks), block_size(rhs.block_size), free_blocks (rhs.total_blocks) {
+        // Copy constructor takes block size and number from old allocator, but generates a new pool
+        pool = reinterpret_cast<T*>(::operator new(total_blocks * block_size));
+
+        first_free = pool;
+
+        // Insert address of next free block at start of each block
+        for (int i = 0; i < total_blocks - 1; i++) {
+            *(T**)(first_free + i * block_size/sizeof(T)) = first_free + (i + 1) * block_size/sizeof(T);
+        }
+
+        // Final block's next ptr is nullptr
+        *(T**)(first_free + (total_blocks - 1) * block_size/sizeof(T)) = nullptr;
+    }
 
     T* allocate(size_t n) {
         // Not allowed to allocate more than a single block
