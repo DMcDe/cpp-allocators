@@ -132,7 +132,7 @@ public:
         *(T**)(reinterpret_cast<char*>(first_free) + (total_blocks - 1) * block_size) = nullptr;
     }
 
-    MemoryPoolAllocator(size_t blocks, size_T size) : total_blocks(blocks), block_size (size) {
+    MemoryPoolAllocator(size_t blocks, size_t size) : total_blocks(blocks), block_size (size) {
         // Allocate pool memory
         pool = reinterpret_cast<T*>(::operator new(total_blocks * block_size));
 
@@ -149,7 +149,7 @@ public:
     }
 
     template<typename U>
-    constexpr MemoryPoolAllocator<T>::MemoryPoolAllocator(const MemoryPoolAllocator<U>&) noexcept {}
+    constexpr MemoryPoolAllocator(const MemoryPoolAllocator<U>&) noexcept {}
 
     T* allocate(size_t n) {
         // Not allowed to allocate more than a single block
@@ -171,7 +171,7 @@ public:
         return block;
     }
 
-    void deallocate(T* p, size_t n) noexcept {
+    void deallocate(T* block, size_t n) noexcept {
         // Since being called by STL, can exclude p error checking
 
         // Set the block to point to what was previously start of free list
@@ -184,8 +184,8 @@ public:
         free_blocks++;
     }
 
-    friend bool operator==(const MemoryPoolAllocator &lhs, const MemoryPoolAllocator &rhs) {return lhs.pool == rhs.pool};
-    friend bool operator!=(const MemoryPoolAllocator &lhs, const MemoryPoolAllocator &rhs) {return lhs.pool != rhs.pool};
+    friend bool operator==(const MemoryPoolAllocator &lhs, const MemoryPoolAllocator &rhs) {return lhs.pool == rhs.pool;}
+    friend bool operator!=(const MemoryPoolAllocator &lhs, const MemoryPoolAllocator &rhs) {return lhs.pool != rhs.pool;}
 
     ~MemoryPoolAllocator() {
         ::operator delete(pool);

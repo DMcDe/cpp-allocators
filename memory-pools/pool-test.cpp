@@ -11,6 +11,24 @@
 #endif
 
 int main() {
+    MemoryPoolAllocator<int> alloc(NUM_BLOCKS, BLOCK_SIZE);
+    
+    std::vector<int, MemoryPoolAllocator<int>> vec(alloc);
+
+    vec.push_back(3);
+    vec.push_back(1);
+    vec.push_back(2);
+
+    for (int i : vec) std::cout << i << " ";
+    std::cout << "\n";
+
+    return 0;
+}
+
+// ---------------------------------------------------------------------------
+// Test of non-STL integrated version
+/*
+int main() {
     LLMemoryPool pool(NUM_BLOCKS, BLOCK_SIZE);
 
     std::cout << "Allocating a block of memory.\n";
@@ -35,3 +53,4 @@ int main() {
     return 0;
 }
 
+*/
