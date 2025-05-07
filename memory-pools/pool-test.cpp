@@ -10,8 +10,10 @@
 #define BLOCK_SIZE 256
 #endif
 
-int main() {   
-    std::vector<int, MemoryPoolAllocator<int>> vec;
+int main() {
+    MemoryPoolAllocator<int> alloc(NUM_BLOCKS, BLOCK_SIZE);
+    
+    std::vector<int, MemoryPoolAllocator<int>> vec(alloc);
 
     vec.push_back(3);
     vec.push_back(1);
