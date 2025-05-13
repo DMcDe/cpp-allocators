@@ -1,5 +1,4 @@
 #include <sys/shm.h>
-#include <climits>
 
 class SharedAllocator {
 private:
@@ -18,27 +17,7 @@ private:
     block_t* alcd_blocks;
     block_t* free_blocks;
 
-    block_t* findSlot(size_t size) {
-        block_t* blk = free_blocks;
-        block_t* best_blk = nullptr;
-        size_t best_dif = INT_MAX;
-
-        while (blk != nullptr) {
-            if (blk->free && blk->size > size) {
-                size_t dif = blk->size - size;
-                if (dif < best_dif) {
-                    best_dif = dif;
-                    best_blk = blk;
-
-                    if (dif == 0) break;
-                }
-            }
-
-            blk = blk->next;
-        }
-
-        return best_blk;
-    }
+    block_t* findSlot(size_t size);
 
     void splitBlock(block_t* block, size_t size);
 

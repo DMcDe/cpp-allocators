@@ -1,4 +1,5 @@
 #include "shmem-allocator.h"
+#include <climits>
 #include <new>
 
 SharedAllocator::SharedAllocator(const char* keygen, size_t size) : size(size) {
@@ -67,4 +68,26 @@ void SharedAllocator::splitBlock(block_t* block, size_t size) {
     size_t new_size = block->size - size;
     new_block->size = new_size;
     block->size = size;
+}
+
+SharedAllocator::block_t* SharedAllocator::findSlot(size_t size) {
+    block_t* blk = free_blocks;
+    block_t* best_blk = nullptr;
+    size_t best_dif = INT_MAX;
+
+    while (blk != nullptr) {
+        if (blk->free && blk->size > size) {
+            size_t dif = blk->size - size;
+            if (dif < best_dif) {
+                best_dif = dif;
+                best_blk = blk;
+
+                if (dif == 0) break;
+            }
+        }
+
+        blk = blk->next;
+    }
+
+    return best_blk;
 }
