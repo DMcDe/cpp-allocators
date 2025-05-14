@@ -145,11 +145,11 @@ int SharedAllocator::deallocate(void* addr) {
     sem_wait(mutex);
 
     // Get struct address from memory address
-    block_t* block = reinterpret_cast<block_t*>(reinterpret_cast<char*>(addr) - sizeof(block_t));
+    block_t* block = reinterpret_cast<block_t*>(reinterpret_cast<char*>(addr) - (sizeof(block_t) - 7));
 
     // Update free & size
     block->free = true;
-    header->alcd_blocks -= block->size;
+    header->alcd -= block->size;
 
     // Remove from allocated list
     if (block->prev) block->prev->next = block->next;
