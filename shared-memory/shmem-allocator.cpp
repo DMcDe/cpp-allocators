@@ -11,11 +11,11 @@ SharedAllocator::SharedAllocator(const char* keygen, size_t size) : size(size) {
     id = shmget(key, size, 0644 | IPC_CREAT);
     if (id == -1) throw std::bad_alloc();
 
-    void* allocation = shmat(id, (void*)0, 0);
-    if (allocation == (void*)-1) throw std::bad_alloc();
+    arena = shmat(id, (void*)0, 0);
+    if (arena == (void*)-1) throw std::bad_alloc();
 
     // Initialize free space struct
-    free_blocks = reinterpret_cast<block_t*>(allocation);
+    free_blocks = reinterpret_cast<block_t*>(arena);
     free_blocks->size = size;
     free_blocks->next = nullptr;
     free_blocks->prev = nullptr;
@@ -28,7 +28,7 @@ SharedAllocator::SharedAllocator(const char* keygen, size_t size) : size(size) {
 
 SharedAllocator::~SharedAllocator() {
     // This should never fail, but throw if it does
-    if (shmdt(reinterpret_cast<void*>(free_blocks)) == -1) throw std::bad_alloc();
+    if (shmdt(arena) == -1) throw std::bad_alloc();
 
     // Remove the segment
     if (shmctl(id, IPC_RMID, 0) == -1) throw std::bad_alloc();

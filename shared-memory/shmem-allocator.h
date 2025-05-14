@@ -16,6 +16,7 @@ private:
     size_t alcd;
     block_t* alcd_blocks;
     block_t* free_blocks;
+    void* arena;
 
     block_t* findSlot(size_t size);
     void splitBlock(block_t* block, size_t size);
