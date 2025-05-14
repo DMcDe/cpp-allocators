@@ -18,13 +18,13 @@ private:
     block_t* free_blocks;
 
     block_t* findSlot(size_t size);
-
     void splitBlock(block_t* block, size_t size);
+    void combineBlocks(block_t* block);
 
 public:
     SharedAllocator(const char* keygen, size_t size);
     ~SharedAllocator();
 
     void* allocate(size_t size);
-    int deallocate(block_t* addr);
+    int deallocate(void* addr);
 };
