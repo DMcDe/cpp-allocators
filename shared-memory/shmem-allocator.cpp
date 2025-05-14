@@ -1,9 +1,14 @@
 #include "shmem-allocator.h"
+#include <cassert>
 #include <cerrno>
 #include <climits>
+#include <fcntl.h>
 #include <new>
 
 SharedAllocator::SharedAllocator(const char* keygen, size_t size) {
+    // Since keygen is also used as the semaphore name, it must start with a slash
+    assert(keygen[0] == '/');
+
     // Generate a key from the given generator string
     key = ftok(keygen, 'a');
     if (key == -1) throw std::bad_alloc();
@@ -25,10 +30,15 @@ SharedAllocator::SharedAllocator(const char* keygen, size_t size) {
 
     header = reinterpret_cast<header_t*>(arena);
 
+    // Create or open the semaphore
+    sem_name = keygen;
+    mutex = sem_open(keygen, O_CREAT, 0666, 1);
+
     // If not the ones creating the segment, don't need to intialize it
     if (initialized) return; 
 
     // Initialize memory segment
+    sem_wait(mutex);
     header->free_blocks = reinterpret_cast<block_t*>(arena);
     header->free_blocks->size = size;
     header->free_blocks->next = nullptr;
@@ -39,6 +49,7 @@ SharedAllocator::SharedAllocator(const char* keygen, size_t size) {
     header->alcd_blocks = nullptr;
     header->alcd = 0;
     header->size = size;
+    sem_post(mutex);
 }
 
 SharedAllocator::~SharedAllocator() {
@@ -48,17 +59,28 @@ SharedAllocator::~SharedAllocator() {
     // Remove the segment
     if (shmctl(id, IPC_RMID, 0) == -1) throw std::bad_alloc();
     // TODO: Validate this always works -- might need to change permissions (0644) in the shmget command for it to
+
+    // Close the semaphore
+    sem_close(mutex);
+    sem_unlink(sem_name);
 }
 
 void* SharedAllocator::allocate(size_t size) {
     if (size == 0) return nullptr;
 
+    // Lock before updating shared state
+    sem_wait(mutex);
+
     // Pop block that best fits
     block_t* block = findSlot(size);
 
     // Fail to allocate if lack sufficient space
-    if (block == nullptr) throw std::bad_alloc(); // TODO: Could resize here, but would require creating whole new memory region & copying over
-
+    if (block == nullptr) {
+        sem_post(mutex);
+        throw std::bad_alloc();
+        // Could resize here, but would require creating whole new memory region & copying over
+        // That's problematic because we need to have the same name, so we have nowhere to copy to
+    }
     // Split the block so as to only use the amount of space we need
     splitBlock(block, size);
 
@@ -76,11 +98,16 @@ void* SharedAllocator::allocate(size_t size) {
     block->prev = nullptr;
     header->alcd_blocks = block;
 
+    // Unlock
+    sem_post(mutex);
+
     // Return a pointer to its data
     return reinterpret_cast<void*>(block->data);
 }
 
 void SharedAllocator::splitBlock(block_t* block, size_t size) {
+    // Don't need to lock here because it's only ever called by allocate, which has acquired the lock
+
     // Return if can't make another block out of remaining space
     if (block->size - size < sizeof(block_t)) return;
 
@@ -103,6 +130,9 @@ void SharedAllocator::splitBlock(block_t* block, size_t size) {
 
 int SharedAllocator::deallocate(void* addr) {
     if (!addr) return -1;
+
+    // Lock
+    sem_wait(mutex);
 
     // Get struct address from memory address
     block_t* block = reinterpret_cast<block_t*>(reinterpret_cast<char*>(addr) - sizeof(block_t));
@@ -128,10 +158,14 @@ int SharedAllocator::deallocate(void* addr) {
     // Recombine adjacent blocks if possible to reduce fragmentation
     combineBlocks(block);
 
+    // Unlock
+    sem_post(mutex);
+
     return 0;
 }
 
 SharedAllocator::block_t* SharedAllocator::findSlot(size_t size) {
+    // Don't need to lock here because only called by allocate, which has a lock
     block_t* blk = header->free_blocks;
     block_t* best_blk = nullptr;
     size_t best_dif = INT_MAX;
@@ -154,6 +188,8 @@ SharedAllocator::block_t* SharedAllocator::findSlot(size_t size) {
 }
 
 void SharedAllocator::combineBlocks(block_t* block) {
+    // Don't need to lock bc only called by deallocate, which has lock
+
     // Merge with next block, if free
     if (block->next && block->next->free) {
         // Combine sizes

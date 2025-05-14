@@ -18,10 +18,11 @@ private:
         block_t* free_blocks;
     };
     
+    const char* sem_name;
     key_t key;
     int id;
     void* arena;
-    sem_t* sem;
+    sem_t* mutex;
     header_t* header;
 
     block_t* findSlot(size_t size);
