@@ -36,17 +36,33 @@ SharedAllocator::~SharedAllocator() {
 }
 
 void* SharedAllocator::allocate(size_t size) {
+    if (size == 0) return nullptr;
+
     // Pop block that best fits
+    block_t* block = findSlot(size);
 
-    // Assign its size?
+    // Fail to allocate if lack sufficient space
+    if (block == nullptr) throw std::bad_alloc(); // TODO: Could resize here, but would require creating whole new memory region & copying over
 
-    // Update prev with new size
+    // Split the block so as to only use the amount of space we need
+    splitBlock(block, size);
 
-    // Update free
+    // Remove from free list
+    if (block->prev) block->prev->next = block->next;
+    else free_blocks = block->next; // If no prev, it was at the start of the free list
+    
+    block->free = false;
 
-    // Update pointers
+    if (block->next) block->next->prev = block->prev;
+
+    // Update allocated
+    alcd += size;
+    block->next = alcd_blocks;
+    block->prev = nullptr;
+    alcd_blocks = block;
 
     // Return a pointer to its data
+    return reinterpret_cast<void*>(block->data);
 }
 
 void SharedAllocator::splitBlock(block_t* block, size_t size) {
@@ -70,6 +86,36 @@ void SharedAllocator::splitBlock(block_t* block, size_t size) {
     block->size = size;
 }
 
+int SharedAllocator::deallocate(void* addr) {
+    if (!addr) return -1;
+
+    // Get struct address from memory address
+    block_t* block = reinterpret_cast<block_t*>(reinterpret_cast<char*>(addr) - sizeof(block_t));
+
+    // Update free & size
+    block->free = true;
+    alcd_blocks -= block->size;
+
+    // Remove from allocated list
+    if (block->prev) block->prev->next = block->next;
+    else alcd_blocks = block->next; // In this case, was at front of allocated list
+
+    // Update pointers
+    if (block->next) block->next->prev = block->prev;
+
+    // Add to free list
+    block->next = free_blocks;
+    block->prev = nullptr;
+
+    if (free_blocks) free_blocks->prev = block;
+    free_blocks = block;
+
+    // Recombine adjacent blocks if possible to reduce fragmentation
+    combineBlocks(block);
+
+    return 0;
+}
+
 SharedAllocator::block_t* SharedAllocator::findSlot(size_t size) {
     block_t* blk = free_blocks;
     block_t* best_blk = nullptr;
@@ -90,4 +136,29 @@ SharedAllocator::block_t* SharedAllocator::findSlot(size_t size) {
     }
 
     return best_blk;
+}
+
+void SharedAllocator::combineBlocks(block_t* block) {
+    // Merge with next block, if free
+    if (block->next && block->next->free) {
+        // Combine sizes
+        block->size += block->next->size;
+
+        // Update relevant pointers
+        block->next = block->next->next;
+        if (block->next) block->next->prev = block;
+    }
+
+    // Merge into previous block, if free
+    if (block->prev && block->prev->free) {
+        // Combine sizes
+        block->prev->size += block->size;
+
+        // Update relevant pointers
+        block->prev->next = block->next;
+        if (block->next) block->next->prev = block->prev;
+
+        // Block is no longer start of a block -- update it
+        block = block->prev;
+    }
 }
