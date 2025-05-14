@@ -1,3 +1,4 @@
+#include <semaphore.h>
 #include <sys/shm.h>
 
 class SharedAllocator {
@@ -10,13 +11,18 @@ private:
         char data[1];
     };
 
+    struct header_t {
+        size_t size;
+        size_t alcd;
+        block_t* alcd_blocks;
+        block_t* free_blocks;
+    };
+    
     key_t key;
     int id;
-    size_t size;
-    size_t alcd;
-    block_t* alcd_blocks;
-    block_t* free_blocks;
     void* arena;
+    sem_t* sem;
+    header_t* header;
 
     block_t* findSlot(size_t size);
     void splitBlock(block_t* block, size_t size);

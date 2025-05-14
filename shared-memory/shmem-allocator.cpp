@@ -1,29 +1,44 @@
 #include "shmem-allocator.h"
+#include <cerrno>
 #include <climits>
 #include <new>
 
-SharedAllocator::SharedAllocator(const char* keygen, size_t size) : size(size) {
+SharedAllocator::SharedAllocator(const char* keygen, size_t size) {
     // Generate a key from the given generator string
     key = ftok(keygen, 'a');
     if (key == -1) throw std::bad_alloc();
 
-    // Create memory segment if it doesn't exist (connect to it if it does)
-    id = shmget(key, size, 0644 | IPC_CREAT);
-    if (id == -1) throw std::bad_alloc();
+    // Create memory segment if it doesn't exist
+    bool initialized = false;
+    id = shmget(key, size, 0644 | IPC_CREAT | IPC_EXCL);
 
+    // If memory segment already exists, just join onto it
+    if (id == -1 && errno == EEXIST) {
+        id = shmget(key, size, 0644 | IPC_CREAT);
+        if (id == -1) throw std::bad_alloc();
+        initialized = true;
+    }  
+
+    // Attach
     arena = shmat(id, (void*)0, 0);
     if (arena == (void*)-1) throw std::bad_alloc();
 
-    // Initialize free space struct
-    free_blocks = reinterpret_cast<block_t*>(arena);
-    free_blocks->size = size;
-    free_blocks->next = nullptr;
-    free_blocks->prev = nullptr;
-    free_blocks->free = true;
+    header = reinterpret_cast<header_t*>(arena);
+
+    // If not the ones creating the segment, don't need to intialize it
+    if (initialized) return; 
+
+    // Initialize memory segment
+    header->free_blocks = reinterpret_cast<block_t*>(arena);
+    header->free_blocks->size = size;
+    header->free_blocks->next = nullptr;
+    header->free_blocks->prev = nullptr;
+    header->free_blocks->free = true;
 
     // No memory has been allocated yet
-    alcd_blocks = nullptr;
-    alcd = 0;
+    header->alcd_blocks = nullptr;
+    header->alcd = 0;
+    header->size = size;
 }
 
 SharedAllocator::~SharedAllocator() {
@@ -49,17 +64,17 @@ void* SharedAllocator::allocate(size_t size) {
 
     // Remove from free list
     if (block->prev) block->prev->next = block->next;
-    else free_blocks = block->next; // If no prev, it was at the start of the free list
+    else header->free_blocks = block->next; // If no prev, it was at the start of the free list
     
     block->free = false;
 
     if (block->next) block->next->prev = block->prev;
 
     // Update allocated
-    alcd += size;
-    block->next = alcd_blocks;
+    header->alcd += size;
+    block->next = header->alcd_blocks;
     block->prev = nullptr;
-    alcd_blocks = block;
+    header->alcd_blocks = block;
 
     // Return a pointer to its data
     return reinterpret_cast<void*>(block->data);
@@ -94,21 +109,21 @@ int SharedAllocator::deallocate(void* addr) {
 
     // Update free & size
     block->free = true;
-    alcd_blocks -= block->size;
+    header->alcd_blocks -= block->size;
 
     // Remove from allocated list
     if (block->prev) block->prev->next = block->next;
-    else alcd_blocks = block->next; // In this case, was at front of allocated list
+    else header->alcd_blocks = block->next; // In this case, was at front of allocated list
 
     // Update pointers
     if (block->next) block->next->prev = block->prev;
 
     // Add to free list
-    block->next = free_blocks;
+    block->next = header->free_blocks;
     block->prev = nullptr;
 
-    if (free_blocks) free_blocks->prev = block;
-    free_blocks = block;
+    if (header->free_blocks) header->free_blocks->prev = block;
+    header->free_blocks = block;
 
     // Recombine adjacent blocks if possible to reduce fragmentation
     combineBlocks(block);
@@ -117,7 +132,7 @@ int SharedAllocator::deallocate(void* addr) {
 }
 
 SharedAllocator::block_t* SharedAllocator::findSlot(size_t size) {
-    block_t* blk = free_blocks;
+    block_t* blk = header->free_blocks;
     block_t* best_blk = nullptr;
     size_t best_dif = INT_MAX;
 
