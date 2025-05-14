@@ -2,12 +2,13 @@
 #include <cassert>
 #include <cerrno>
 #include <climits>
+#include <iostream>
 #include <fcntl.h>
 #include <new>
 
-SharedAllocator::SharedAllocator(const char* keygen, size_t size) {
+SharedAllocator::SharedAllocator(const char* keygen, const char* sem_name, size_t size) : sem_name(sem_name) {
     // Since keygen is also used as the semaphore name, it must start with a slash
-    assert(keygen[0] == '/');
+    assert(sem_name[0] == '/');
 
     // Generate a key from the given generator string
     key = ftok(keygen, 'a');
@@ -26,20 +27,29 @@ SharedAllocator::SharedAllocator(const char* keygen, size_t size) {
 
     // Attach
     arena = shmat(id, (void*)0, 0);
-    if (arena == (void*)-1) throw std::bad_alloc();
+    if (arena == (void*)-1) {
+        // Remove allocated region before exiting
+        shmctl(id, IPC_RMID, 0);
+        throw std::bad_alloc();
+    }
 
     header = reinterpret_cast<header_t*>(arena);
 
     // Create or open the semaphore
-    sem_name = keygen;
-    mutex = sem_open(keygen, O_CREAT, 0666, 1);
+    mutex = sem_open(sem_name, O_CREAT, 0666, 1);
+    if (mutex == SEM_FAILED) {
+        // Detach and remove before exiting
+        shmdt(arena);
+        shmctl(id, IPC_RMID, 0);
+        throw std::bad_alloc();
+    }
 
     // If not the ones creating the segment, don't need to intialize it
     if (initialized) return; 
 
     // Initialize memory segment
     sem_wait(mutex);
-    header->free_blocks = reinterpret_cast<block_t*>(arena);
+    header->free_blocks = reinterpret_cast<block_t*>(reinterpret_cast<char*>(arena) + sizeof(header_t));
     header->free_blocks->size = size;
     header->free_blocks->next = nullptr;
     header->free_blocks->prev = nullptr;
@@ -53,11 +63,11 @@ SharedAllocator::SharedAllocator(const char* keygen, size_t size) {
 }
 
 SharedAllocator::~SharedAllocator() {
-    // This should never fail, but throw if it does
-    if (shmdt(arena) == -1) throw std::bad_alloc();
+    // This should never fail, but print if it does
+    if (shmdt(arena) == -1) std::cout << "Unexpected error in shmdt.\n";
 
     // Remove the segment
-    if (shmctl(id, IPC_RMID, 0) == -1) throw std::bad_alloc();
+    if (shmctl(id, IPC_RMID, 0) == -1) std::cout << "Unexpected error in shmctl.\n";
     // TODO: Validate this always works -- might need to change permissions (0644) in the shmget command for it to
 
     // Close the semaphore

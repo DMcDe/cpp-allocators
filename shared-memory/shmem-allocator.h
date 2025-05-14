@@ -30,7 +30,7 @@ private:
     void combineBlocks(block_t* block);
 
 public:
-    SharedAllocator(const char* keygen, size_t size);
+    SharedAllocator(const char* keygen, const char* sem_name, size_t size);
     ~SharedAllocator();
 
     void* allocate(size_t size);
