@@ -11,7 +11,7 @@
 #endif
 
 int main() {
-    const char* file_key = "/home/dmcd/misc/allocators/README.md";
+    const char* file_key = "/INSERT AN EXISTING FILE HERE -- SAME AMONG ALL PROCESSES";
     const char* sem_name = "/semaphore";
     SharedAllocator alloc(file_key, sem_name, MEMORYSIZE);
 
