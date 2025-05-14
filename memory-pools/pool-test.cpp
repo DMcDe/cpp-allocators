@@ -34,7 +34,7 @@ int main() {
     std::cout << "Allocating a block of memory.\n";
     void* block = pool.allocate();
 
-    const char* str = "This is my first block of memory!\0";
+    const char* str = "This is my first block of memory!;
 
     memcpy(block, str, strlen(str));
     std::cout << reinterpret_cast<char*>(block) << "\n";
